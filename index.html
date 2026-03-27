@@ -1,0 +1,749 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>大相撲番付予想</title>
+  <style>
+    :root {
+      --paper: #f7edd8;
+      --paper-dark: #eddfc0;
+      --red: #8b0000;
+      --red-light: #a00000;
+      --gold: #b8860b;
+      --gold-light: #daa520;
+      --text: #1a0a00;
+      --text-muted: #6b4c2a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "游明朝", "YuMincho", "ヒラギノ明朝 ProN W3", "HiraMinProN-W3",
+                   "MS Mincho", "MS 明朝", Georgia, serif;
+      background: #1c0a04;
+      background-image:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 40px),
+        repeating-linear-gradient(0deg,  rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 40px);
+      min-height: 100vh;
+      padding: 14px;
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      background: linear-gradient(160deg, #700000 0%, #4a0000 100%);
+      border: 3px double var(--gold);
+      padding: 14px 20px 12px;
+      margin-bottom: 12px;
+      color: var(--paper);
+      position: relative;
+    }
+    .header::before,
+    .header::after {
+      content: "◆";
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      color: var(--gold-light);
+      font-size: 1rem;
+    }
+    .header::before { left: 12px; }
+    .header::after  { right: 12px; }
+    .header h1 {
+      font-size: 1.75rem;
+      letter-spacing: 0.55em;
+      text-indent: 0.55em;
+      text-shadow: 1px 2px 6px rgba(0,0,0,0.6);
+    }
+    .basho-info {
+      font-size: 0.85rem;
+      color: var(--gold-light);
+      margin-top: 4px;
+      letter-spacing: 0.25em;
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    button {
+      font-family: inherit;
+      font-size: 0.88rem;
+      padding: 7px 18px;
+      border: 2px solid var(--gold);
+      background: var(--red);
+      color: var(--paper);
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button:hover  { background: var(--red-light); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button.sub {
+      background: #2c1208;
+      border-color: #665533;
+      color: #cca;
+    }
+    button.sub:hover { background: #3c1a0a; }
+
+    /* ── Status messages ── */
+    .loading {
+      text-align: center;
+      color: var(--gold-light);
+      font-size: 1rem;
+      padding: 50px 0;
+      letter-spacing: 0.2em;
+    }
+    .loading-dots::after {
+      content: "";
+      animation: dots 1.2s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0%   { content: ""; }
+      25%  { content: "・"; }
+      50%  { content: "・・"; }
+      75%  { content: "・・・"; }
+      100% { content: ""; }
+    }
+    .error-msg {
+      text-align: center;
+      color: #ff8888;
+      background: rgba(139,0,0,0.25);
+      border: 1px solid #8b0000;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+    }
+    .saved-notice {
+      text-align: center;
+      color: var(--gold-light);
+      font-size: 0.78rem;
+      margin-bottom: 6px;
+      min-height: 1.2em;
+      letter-spacing: 0.1em;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+    .saved-notice.show { opacity: 1; }
+
+    /* ── Banzuke frame ── */
+    .banzuke-wrap {
+      background: var(--paper);
+      background-image:
+        radial-gradient(ellipse at 15% 40%, rgba(184,134,11,0.07) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 60%, rgba(139,0,0,0.05) 0%, transparent 55%);
+      border: 4px double var(--red);
+      box-shadow: 0 0 0 1px var(--gold), 0 0 30px rgba(0,0,0,0.7);
+      padding: 10px 10px 14px;
+    }
+
+    .banzuke-scroll { overflow-x: auto; }
+    .banzuke-inner  { min-width: 420px; }
+
+    /* ── Division header ── */
+    .div-header {
+      text-align: center;
+      background: linear-gradient(90deg, transparent, var(--red) 20%, var(--red) 80%, transparent);
+      color: var(--paper);
+      font-size: 1rem;
+      letter-spacing: 0.6em;
+      text-indent: 0.6em;
+      padding: 5px 10px;
+      margin: 10px 0 6px;
+      border-top: 1px solid var(--gold);
+      border-bottom: 1px solid var(--gold);
+    }
+    .div-header:first-child { margin-top: 0; }
+
+    /* ── Column labels (東/西) ── */
+    .col-labels {
+      display: grid;
+      grid-template-columns: 1fr 68px 1fr;
+      gap: 3px;
+      margin-bottom: 3px;
+    }
+    .col-label {
+      text-align: center;
+      font-size: 1.05rem;
+      color: var(--red);
+      letter-spacing: 0.4em;
+      padding: 2px 0;
+    }
+
+    /* ── Banzuke row ── */
+    .banzuke-row {
+      display: grid;
+      grid-template-columns: 1fr 68px 1fr;
+      gap: 3px;
+      margin-bottom: 3px;
+      align-items: stretch;
+    }
+
+    /* ── Rank center ── */
+    .rank-center {
+      background: var(--red);
+      color: var(--paper);
+      font-size: 0.72rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 3px 2px;
+      min-height: 56px;
+      border: 1px solid var(--gold);
+      line-height: 1.5;
+      letter-spacing: 0.05em;
+      white-space: pre-line;
+      user-select: none;
+    }
+    .rank-center.rank-yokozuna { font-size: 0.85rem; font-weight: bold; }
+    .rank-center.rank-ozeki    { font-size: 0.82rem; }
+
+    /* ── Wrestler slot ── */
+    .slot {
+      background: var(--paper);
+      border: 1px solid var(--gold);
+      padding: 5px 7px;
+      cursor: grab;
+      min-height: 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
+      position: relative;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .slot:active { cursor: grabbing; }
+    .slot.east { text-align: right; }
+    .slot.west { text-align: left; }
+    .slot.empty {
+      background: rgba(139,0,0,0.04);
+      border-style: dashed;
+      cursor: default;
+      pointer-events: none;
+    }
+    .slot:not(.empty):hover {
+      background: #fff8e8;
+      border-color: var(--red);
+      z-index: 2;
+    }
+    .slot.drag-over {
+      background: #fff3cc !important;
+      border: 2px solid var(--gold-light) !important;
+      box-shadow: 0 0 10px rgba(218,165,32,0.55);
+    }
+    .slot.dragging {
+      opacity: 0.35;
+      box-shadow: none;
+    }
+
+    /* Yokozuna / Ozeki rows slightly taller */
+    .banzuke-row.row-yokozuna .slot,
+    .banzuke-row.row-ozeki    .slot { min-height: 62px; }
+
+    /* ── Wrestler card content ── */
+    .shikona {
+      font-size: 0.92rem;
+      font-weight: bold;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .banzuke-row.row-yokozuna .shikona { font-size: 1.02rem; }
+    .banzuke-row.row-ozeki    .shikona { font-size: 0.98rem; }
+    .record {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* ── Touch ghost ── */
+    .touch-ghost {
+      position: fixed !important;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.72;
+      transform: scale(1.06);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+      border: 2px solid var(--gold-light) !important;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      color: #7a5535;
+      font-size: 0.72rem;
+      margin-top: 10px;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 560px) {
+      .header h1    { font-size: 1.25rem; letter-spacing: 0.35em; }
+      .banzuke-row,
+      .col-labels   { grid-template-columns: 1fr 50px 1fr; }
+      .rank-center  { font-size: 0.62rem; min-height: 50px; }
+      .slot         { min-height: 50px; padding: 4px 5px; }
+      .shikona      { font-size: 0.8rem; }
+      .record       { font-size: 0.6rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>大相撲番付予想</h1>
+    <div class="basho-info" id="bashoInfo">読み込み中…</div>
+  </div>
+
+  <div class="controls">
+    <button onclick="resetBanzuke()">番付リセット</button>
+    <button class="sub" onclick="refreshData()">データ更新</button>
+  </div>
+
+  <div class="saved-notice" id="savedNotice">予想番付を保存しました</div>
+  <div class="error-msg"  id="errorMsg"   style="display:none;"></div>
+
+  <div class="loading" id="loadingMsg">
+    <span class="loading-dots">番付データを取得中</span>
+  </div>
+
+  <div id="banzukeWrap" class="banzuke-wrap" style="display:none;">
+    <div class="banzuke-scroll">
+      <div class="banzuke-inner" id="banzukeInner"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    データ提供: sumo-api.com ／ 力士カードをドラッグして次場所の予想番付を作れます
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   定数
+================================================================ */
+const API      = 'https://www.sumo-api.com/api';
+const SAVE_KEY = 'sumo_banzuke_v1';
+
+const RANK_ORDER = { Yokozuna: 0, Ozeki: 1, Sekiwake: 2, Komusubi: 3, Maegashira: 4 };
+const RANK_JP    = {
+  Yokozuna: '横綱', Ozeki: '大関', Sekiwake: '関脇',
+  Komusubi: '小結', Maegashira: '前頭', Juryo: '十両', Makushita: '幕下'
+};
+const DIV_JP = { Makuuchi: '幕内', Juryo: '十両', Makushita: '幕下上位' };
+const NAMED_RANKS = new Set(['Yokozuna', 'Ozeki', 'Sekiwake', 'Komusubi']);
+const JP_NUM = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
+               '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
+const BASHO_MONTHS = [1, 3, 5, 7, 9, 11];
+const VENUES = {1:'初場所（東京）', 3:'春場所（大阪）', 5:'夏場所（東京）',
+                7:'名古屋場所', 9:'秋場所（東京）', 11:'九州場所（福岡）'};
+
+/* ================================================================
+   状態
+================================================================ */
+let slots      = [];   // [{key, rankName, rankNumber, side, division}]
+let baseline   = {};   // key → wrestler  (API から取得した初期値)
+let assignment = {};   // key → wrestler  (現在の予想配置)
+let bashoId    = null;
+
+/* ドラッグ状態 */
+let dragSrc    = null;
+let touchSrc   = null;
+let touchGhost = null;
+let touchRect  = null;
+
+/* ================================================================
+   ユーティリティ
+================================================================ */
+function parseRank(s) {
+  const p = s.trim().split(/\s+/);
+  const name   = p[0];
+  const number = (p.length >= 2 && p[1] !== 'East' && p[1] !== 'West') ? (parseInt(p[1]) || 1) : 1;
+  const side   = p.find(x => x === 'East' || x === 'West') || 'East';
+  return { name, number, side };
+}
+
+function slotKey(div, rankName, rankNumber, side) {
+  return `${div}|${rankName}|${rankNumber}|${side}`;
+}
+
+function rankLabel(rankName, rankNumber) {
+  const jp = RANK_JP[rankName] || rankName;
+  if (NAMED_RANKS.has(rankName)) return jp;
+  const n = JP_NUM[rankNumber] || String(rankNumber);
+  return jp + '\n' + n + '枚目';
+}
+
+function rankCssClass(rankName) {
+  return 'rank-' + rankName.toLowerCase();
+}
+
+function formatRecord(w, l, a) {
+  if (w == null) return '';
+  let s = `${w}勝${l}敗`;
+  if (a > 0) s += `${a}休`;
+  return s;
+}
+
+function bashoLabel(id) {
+  if (!id) return '';
+  const y = id.slice(0, 4);
+  const m = parseInt(id.slice(4));
+  return `${y}年 ${VENUES[m] || m + '月場所'}`;
+}
+
+function rowOrder(rankName, rankNumber, div) {
+  if (div === 'Makuuchi') return (RANK_ORDER[rankName] ?? 9) * 100 + rankNumber;
+  return rankNumber;
+}
+
+/* ================================================================
+   API
+================================================================ */
+async function apiFetch(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`);
+  return res.json();
+}
+
+async function findLatestBasho() {
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const ids   = [];
+  for (let y = year; y >= year - 1; y--) {
+    const ms = [...BASHO_MONTHS].filter(m => y < year || m <= month).reverse();
+    ms.forEach(m => ids.push(`${y}${String(m).padStart(2, '0')}`));
+  }
+  for (const id of ids) {
+    try {
+      const d = await apiFetch(`/basho/${id}/banzuke/Makuuchi`);
+      if (d?.east?.length || d?.west?.length) return id;
+    } catch (_) { /* try next */ }
+  }
+  return null;
+}
+
+/* ================================================================
+   データ読み込み
+================================================================ */
+async function loadData() {
+  showLoading(true);
+  hideError();
+  document.getElementById('banzukeWrap').style.display = 'none';
+
+  try {
+    bashoId = await findLatestBasho();
+    if (!bashoId) throw new Error('番付データが見つかりませんでした。しばらくして再度お試しください。');
+
+    document.getElementById('bashoInfo').textContent = bashoLabel(bashoId);
+
+    const [maku, juro, maks] = await Promise.all([
+      apiFetch(`/basho/${bashoId}/banzuke/Makuuchi`),
+      apiFetch(`/basho/${bashoId}/banzuke/Juryo`),
+      apiFetch(`/basho/${bashoId}/banzuke/Makushita`).catch(() => ({ east: [], west: [] }))
+    ]);
+
+    slots    = [];
+    baseline = {};
+
+    function ingest(data, div, maxRankNum) {
+      const wrestlers = [...(data.east || []), ...(data.west || [])];
+      wrestlers.forEach(w => {
+        const p = parseRank(w.rank);
+        if (maxRankNum && p.number > maxRankNum) return;
+        const key = slotKey(div, p.name, p.number, p.side);
+        baseline[key] = {
+          shikonaJp: w.shikonaJp || w.shikonaEn || '（不明）',
+          wins:      w.wins      ?? 0,
+          losses:    w.losses    ?? 0,
+          absences:  w.absences  ?? 0
+        };
+        slots.push({ key, rankName: p.name, rankNumber: p.number, side: p.side, division: div });
+      });
+    }
+
+    ingest(maku, 'Makuuchi');
+    ingest(juro, 'Juryo');
+    ingest(maks, 'Makushita', 15);
+
+    const saved = loadSaved();
+    assignment = (saved && validate(saved)) ? saved : { ...baseline };
+
+    render();
+    showLoading(false);
+    document.getElementById('banzukeWrap').style.display = 'block';
+
+  } catch (err) {
+    showLoading(false);
+    showError(err.message);
+  }
+}
+
+/* ================================================================
+   保存・復元
+================================================================ */
+function saveAssignment() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(assignment)); } catch (_) {}
+  const el = document.getElementById('savedNotice');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+function loadSaved() {
+  try {
+    const s = localStorage.getItem(SAVE_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch (_) { return null; }
+}
+
+function validate(saved) {
+  const bKeys = Object.keys(baseline);
+  return bKeys.length === Object.keys(saved).length && bKeys.every(k => k in saved);
+}
+
+/* ================================================================
+   リセット / 更新
+================================================================ */
+function resetBanzuke() {
+  if (!confirm('番付を元の状態にリセットしますか？\n（予想した並び順がすべて消えます）')) return;
+  assignment = { ...baseline };
+  saveAssignment();
+  render();
+}
+
+function refreshData() {
+  if (!confirm('サーバーからデータを再取得します。現在の予想は消えます。よろしいですか？')) return;
+  localStorage.removeItem(SAVE_KEY);
+  loadData();
+}
+
+/* ================================================================
+   描画
+================================================================ */
+function render() {
+  const root = document.getElementById('banzukeInner');
+  root.innerHTML = '';
+
+  ['Makuuchi', 'Juryo', 'Makushita'].forEach(div => {
+    const divSlots = slots.filter(s => s.division === div);
+    if (!divSlots.length) return;
+
+    // 部門ヘッダー
+    root.appendChild(el('div', 'div-header', '― ' + DIV_JP[div] + ' ―'));
+
+    // 東 / 西 列ラベル
+    const colRow = el('div', 'col-labels');
+    colRow.innerHTML = `
+      <div class="col-label" style="text-align:right">東</div>
+      <div></div>
+      <div class="col-label" style="text-align:left">西</div>`;
+    root.appendChild(colRow);
+
+    // (rankName, rankNumber) のユニーク行を収集してソート
+    const rowMap = new Map();
+    divSlots.forEach(s => {
+      const rk = `${s.rankName}|${s.rankNumber}`;
+      if (!rowMap.has(rk)) rowMap.set(rk, { rankName: s.rankName, rankNumber: s.rankNumber });
+    });
+    const rows = [...rowMap.values()].sort((a, b) =>
+      rowOrder(a.rankName, a.rankNumber, div) - rowOrder(b.rankName, b.rankNumber, div)
+    );
+
+    rows.forEach(({ rankName, rankNumber }) => {
+      const eKey = slotKey(div, rankName, rankNumber, 'East');
+      const wKey = slotKey(div, rankName, rankNumber, 'West');
+      const hasE = slots.some(s => s.key === eKey);
+      const hasW = slots.some(s => s.key === wKey);
+      if (!hasE && !hasW) return;
+
+      const row = el('div', `banzuke-row row-${rankName.toLowerCase()}`);
+
+      row.appendChild(hasE ? makeSlot(eKey, 'east') : emptyCell('east'));
+
+      const center = el('div', `rank-center ${rankCssClass(rankName)}`);
+      center.style.whiteSpace = 'pre-line';
+      center.textContent = rankLabel(rankName, rankNumber);
+      row.appendChild(center);
+
+      row.appendChild(hasW ? makeSlot(wKey, 'west') : emptyCell('west'));
+
+      root.appendChild(row);
+    });
+  });
+}
+
+function el(tag, cls, text) {
+  const d = document.createElement(tag);
+  if (cls)  d.className   = cls;
+  if (text) d.textContent = text;
+  return d;
+}
+
+function makeSlot(key, side) {
+  const wrestler = assignment[key];
+  const div = el('div', `slot ${side}`);
+  div.dataset.key = key;
+  div.draggable = true;
+
+  if (wrestler) {
+    div.innerHTML = `
+      <div class="shikona">${wrestler.shikonaJp}</div>
+      <div class="record">${formatRecord(wrestler.wins, wrestler.losses, wrestler.absences)}</div>`;
+  } else {
+    div.classList.add('empty');
+    div.draggable = false;
+    return div;
+  }
+
+  div.addEventListener('dragstart', onDragStart);
+  div.addEventListener('dragover',  onDragOver);
+  div.addEventListener('dragleave', onDragLeave);
+  div.addEventListener('drop',      onDrop);
+  div.addEventListener('dragend',   onDragEnd);
+  div.addEventListener('touchstart', onTouchStart, { passive: false });
+
+  return div;
+}
+
+function emptyCell(side) {
+  return el('div', `slot ${side} empty`);
+}
+
+/* ================================================================
+   マウス ドラッグ&ドロップ
+================================================================ */
+function onDragStart(e) {
+  dragSrc = e.currentTarget.dataset.key;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragSrc);
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const t = e.currentTarget;
+  if (t.dataset.key !== dragSrc && !t.classList.contains('empty')) t.classList.add('drag-over');
+}
+
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+
+function onDrop(e) {
+  e.preventDefault();
+  const t = e.currentTarget;
+  t.classList.remove('drag-over');
+  if (t.dataset.key && t.dataset.key !== dragSrc && !t.classList.contains('empty')) {
+    swap(dragSrc, t.dataset.key);
+  }
+}
+
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+  dragSrc = null;
+}
+
+/* ================================================================
+   タッチ ドラッグ&ドロップ
+================================================================ */
+function onTouchStart(e) {
+  const src = e.currentTarget;
+  if (src.classList.contains('empty')) return;
+  e.preventDefault();
+
+  touchSrc  = src.dataset.key;
+  touchRect = src.getBoundingClientRect();
+
+  touchGhost = src.cloneNode(true);
+  touchGhost.className = src.className + ' touch-ghost';
+  touchGhost.style.cssText += `
+    width:${touchRect.width}px; height:${touchRect.height}px;
+    left:${touchRect.left}px;   top:${touchRect.top}px;`;
+  document.body.appendChild(touchGhost);
+  src.classList.add('dragging');
+
+  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  document.addEventListener('touchend',  onTouchEnd);
+}
+
+function onTouchMove(e) {
+  e.preventDefault();
+  if (!touchGhost) return;
+  const t = e.touches[0];
+  touchGhost.style.left = (t.clientX - touchRect.width  / 2) + 'px';
+  touchGhost.style.top  = (t.clientY - touchRect.height / 2) + 'px';
+
+  document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+  touchGhost.style.visibility = 'hidden';
+  const under = document.elementFromPoint(t.clientX, t.clientY);
+  touchGhost.style.visibility = '';
+  const target = under?.closest('.slot');
+  if (target && !target.classList.contains('empty') && target.dataset.key !== touchSrc) {
+    target.classList.add('drag-over');
+  }
+}
+
+function onTouchEnd(e) {
+  document.removeEventListener('touchmove', onTouchMove);
+  document.removeEventListener('touchend',  onTouchEnd);
+  if (!touchGhost) return;
+
+  const t = e.changedTouches[0];
+  touchGhost.style.visibility = 'hidden';
+  const under = document.elementFromPoint(t.clientX, t.clientY);
+  touchGhost.remove();
+  touchGhost = null;
+
+  document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+  const srcEl = document.querySelector(`[data-key="${CSS.escape(touchSrc)}"]`);
+  if (srcEl) srcEl.classList.remove('dragging');
+
+  const target = under?.closest('.slot');
+  if (target && !target.classList.contains('empty') && target.dataset.key && target.dataset.key !== touchSrc) {
+    swap(touchSrc, target.dataset.key);
+  }
+  touchSrc = null;
+}
+
+/* ================================================================
+   入れ替え
+================================================================ */
+function swap(keyA, keyB) {
+  [assignment[keyA], assignment[keyB]] = [assignment[keyB], assignment[keyA]];
+  saveAssignment();
+  render();
+}
+
+/* ================================================================
+   UI ヘルパー
+================================================================ */
+function showLoading(v) { document.getElementById('loadingMsg').style.display = v ? 'block' : 'none'; }
+function showError(msg) {
+  const e = document.getElementById('errorMsg');
+  e.textContent = msg;
+  e.style.display = 'block';
+}
+function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
+
+/* ================================================================
+   起動
+================================================================ */
+loadData();
+</script>
+</body>
+</html>
